@@ -1,11 +1,10 @@
 use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
 use uuid::Uuid;
-
-
 
 mod support;
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 struct Participant {
     id: Uuid,
     name: String
@@ -20,11 +19,11 @@ impl Participant {
     }
 
     fn share(&self, state: &State) -> f32 {
-        *state.share_map().get(&self.id).unwrap_or(&0.)
+        state.share_map().get(&self.name).iter().fold(0., |s, map| s + map.iter().fold(0., |s, (_, total)| s + total))
     }
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 struct Receipt {
     label: String,
     total: f32,
@@ -70,26 +69,7 @@ struct State {
 }
 
 impl State {
-    fn share_map(&self) -> HashMap<Uuid, f32> {
-        let mut map: HashMap<Uuid, f32> = HashMap::new();
-
-        for receipt in self.receipts.iter() {
-            let participants: Vec<&Uuid> = self.share_map.iter().filter(|(_, list)| list.contains(&receipt.id)).map(|(id, _)| id).collect();
-            let share = receipt.total(self) / participants.len() as f32;
-            
-            for id in participants.iter() {
-                if map.contains_key(&id) {
-                    map.insert(**id, map[&id] + share);
-                } else {
-                    map.insert(**id, share);
-                }
-            }
-        }
-
-        map
-    }
-
-    fn share_map_receipts(&self) -> HashMap<String, HashMap<String, f32>> {
+    fn share_map(&self) -> HashMap<String, HashMap<String, f32>> {
         let mut map: HashMap<String, HashMap<String, f32>> = HashMap::new();
 
         for receipt in self.receipts.iter() {
@@ -105,17 +85,17 @@ impl State {
                 }
             }
         }
-        println!("{:#?}", map);
+
         map
     }
 
     fn total(&self) -> f32 {
-        self.share_map().iter().fold(0., |s, (_, c)| s + c)
+        self.share_map().iter().fold(0., |s, (_, map)| s + map.iter().fold(0., |s, (_, total)| s + total))
     }
 
     fn export_csv(&self) -> String {
         let mut s = String::new();
-        let map = self.share_map_receipts();
+        let map = self.share_map();
 
         s += "Name,Total,Receipt\n";
 
@@ -134,7 +114,7 @@ impl State {
 
     fn export_txt(&self) -> String {
         let mut s = String::new();
-        let map = self.share_map_receipts();
+        let map = self.share_map();
 
         fn f(s: &str, l: usize) -> String {
             if s.len() >= l {

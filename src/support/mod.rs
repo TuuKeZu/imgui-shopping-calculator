@@ -10,6 +10,7 @@ use std::path::Path;
 use std::time::Instant;
 
 mod clipboard;
+mod file_system;
 
 pub struct System {
     pub event_loop: EventLoop<()>,
