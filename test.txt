@@ -1,0 +1,9 @@
+Participant | Share | Receipt
+b,22.33€,
+,22.33€,Sello
+c,25.32€,
+,2.99€,item
+,22.33€,Sello
+a,22.33€,
+,22.33€,Sello
+Total,69.99,

@@ -20,7 +20,7 @@ impl Participant {
     }
 
     fn share(&self, state: &State) -> f32 {
-        *state.shares().get(&self.id).unwrap_or(&0.)
+        *state.share_map().get(&self.id).unwrap_or(&0.)
     }
 }
 
@@ -58,7 +58,6 @@ struct State {
     share_map: HashMap<Uuid, Vec<Uuid>>,
     receipts: Vec<Receipt>,
     exclusions: HashMap<Uuid, Receipt>,
-    total: f32,
 
     tmp_name: String,
     tmp_label: String,
@@ -71,7 +70,7 @@ struct State {
 }
 
 impl State {
-    fn shares(&self) -> HashMap<Uuid, f32> {
+    fn share_map(&self) -> HashMap<Uuid, f32> {
         let mut map: HashMap<Uuid, f32> = HashMap::new();
 
         for receipt in self.receipts.iter() {
@@ -88,6 +87,86 @@ impl State {
         }
 
         map
+    }
+
+    fn share_map_receipts(&self) -> HashMap<String, HashMap<String, f32>> {
+        let mut map: HashMap<String, HashMap<String, f32>> = HashMap::new();
+
+        for receipt in self.receipts.iter() {
+            let participants: Vec<&Uuid> = self.share_map.iter().filter(|(_, list)| list.contains(&receipt.id)).map(|(id, _)| id).collect();
+            let share = receipt.total(self) / participants.len() as f32;
+            
+            for id in participants.iter() {
+                let name = self.participants.iter().find(|p| p.id == **id).unwrap().name.clone();
+                if map.contains_key(&name) {
+                    map.get_mut(&name).unwrap().insert(receipt.label.clone(), share);
+                } else {
+                    map.insert(name, HashMap::from([(receipt.label.clone(), share)]));
+                }
+            }
+        }
+        println!("{:#?}", map);
+        map
+    }
+
+    fn total(&self) -> f32 {
+        self.share_map().iter().fold(0., |s, (_, c)| s + c)
+    }
+
+    fn export_csv(&self) -> String {
+        let mut s = String::new();
+        let map = self.share_map_receipts();
+
+        s += "Name,Total,Receipt\n";
+
+        for (name, inner) in map.iter() {
+            let total = inner.iter().fold(0., |s, (_, total)| s + total);
+            s += &format!("{name},{total:.2}€,\n");
+            for (label, total) in inner.iter() {
+                s += &format!(",{total:.2}€,{label}\n");
+            }
+        }
+
+        s += &format!("Total,{:.2}€,", self.total());
+        println!("{s}");
+        s
+    }
+
+    fn export_txt(&self) -> String {
+        let mut s = String::new();
+        let map = self.share_map_receipts();
+
+        fn f(s: &str, l: usize) -> String {
+            if s.len() >= l {
+                s.to_string()
+            } else {
+                let n = l - s.len();
+                s.to_string() + &" ".repeat(n)
+            }
+        }
+
+        let c1 = usize::max(map.keys().map(|x| x.len()).max().unwrap(), 5);
+        let c2 = usize::max(map.values().map(|m| m.values().map(|x| format!("{x:.2}€").len()).max().unwrap()).max().unwrap(), 5);
+        let c3 = usize::max(map.values().map(|m| m.keys().max().unwrap().len()).max().unwrap(), 7);
+
+        s += &format!("{}   {}   {}\n", f("Name", c1), f("Total", c2 - 2), f("Receipt", c3));
+        s += &format!("{}\n", "-".repeat(9 + c1 + c2 + c3));
+
+        for (name, inner) in map.iter() {
+            let total = inner.iter().fold(0., |s, (_, total)| s + total);
+
+            s += &format!("{}   {}   {}\n", f(&name, c1), f(&format!("{total:.2}€"), c2), f("", c3));
+
+            for (label, total) in inner.iter() {
+                s += &format!("{} > {}   {}\n", f("", c1), f(&format!("{total:.2}€"), c2), f(&label, c3));
+            }
+        }
+
+        s += &format!("{}\n", "-".repeat(9 + c1 + c2 + c3));
+        s += &format!("{}   {}   {}", f("Total", c1), f(&format!("{:.2}€", self.total()), c2), f("", c3));
+
+        println!("{s}");
+        s
     }
 }
 
@@ -142,7 +221,7 @@ fn main() {
                                         for receipt in state.receipts.iter() {
                                             let selected = state.share_map[&id].contains(&receipt.id);
     
-                                            if ui.selectable_config(format!("{}##{row_num}", receipt.label))
+                                            if ui.selectable_config(format!("{} ({})##{row_num}", receipt.label, if selected {"partake"} else {"ignore"}))
                                             .allow_double_click(false)
                                             .selected(selected)
                                             .build() {
@@ -159,7 +238,8 @@ fn main() {
                                 
 
                                 if ui.button("Remove") {
-                                    state.participants.remove(row_num as usize);
+                                    let p = state.participants.remove(row_num as usize);
+                                    state.share_map.remove(&p.id);
                                 }
                             });
                         }
@@ -270,7 +350,7 @@ fn main() {
                 });
 
                 ui.window("Add Receipt")
-                .size([300.0, 150.0], imgui::Condition::FirstUseEver)
+                .size([300.0, 180.0], imgui::Condition::FirstUseEver)
                 .position([480., 270.], imgui::Condition::Always)
                 .resizable(false)
                 .movable(false)
@@ -287,7 +367,7 @@ fn main() {
                     .build();
                     
                     ui.tree_node_config("Options").build(|| {
-                        if ui.selectable_config("auto-share")
+                        if ui.selectable_config(format!("auto-share ({})", if state.tmp_auto_add {"enabled"} else {"disabled"}))
                         .selected(state.tmp_auto_add)
                         .build() {
                             state.tmp_auto_add = !state.tmp_auto_add;
@@ -311,6 +391,26 @@ fn main() {
                     }
 
                 });
+
+                ui.window("Exporting options")
+                .size([200.0, 100.0], imgui::Condition::FirstUseEver)
+                .position([270., 10.], imgui::Condition::Always)
+                .resizable(false)
+                .movable(false)
+                .collapsible(false)
+                .build(|| {
+                    ui.text("Current total");
+                    ui.text_disabled(format!("{:.2}", state.total()));
+
+                    if ui.button("Export in .csv") {
+                        state.export_csv();
+                    }
+
+                    if ui.button("Export in .txt") {
+                        state.export_txt();
+                    }
+                })
+
             });
     });
 }
