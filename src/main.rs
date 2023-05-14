@@ -66,6 +66,8 @@ struct State {
 
     r_tmp_label: String,
     r_tmp_total: f32,
+
+    tmp_auto_add: bool
 }
 
 impl State {
@@ -233,7 +235,11 @@ fn main() {
                                         if ui.button("Exclude") {
                                             let receipt = Receipt::new(state.r_tmp_label.clone(), state.r_tmp_total.clone(), true);
                                             state.exclusions.insert(id, receipt.clone());
-                                            state.receipts.push(receipt);
+                                            state.receipts.push(receipt.clone());
+
+                                            if state.tmp_auto_add {
+                                                state.share_map.iter_mut().for_each(|(_, l)| l.push(receipt.id));
+                                            }
     
                                             state.r_tmp_label = String::new();
                                             state.r_tmp_total = 0.;
@@ -279,11 +285,26 @@ fn main() {
                     ui.text("Receipt's total");
                     ui.input_float("##receipt_total", &mut state.tmp_total)
                     .build();
+                    
+                    ui.tree_node_config("Options").build(|| {
+                        if ui.selectable_config("auto-share")
+                        .selected(state.tmp_auto_add)
+                        .build() {
+                            state.tmp_auto_add = !state.tmp_auto_add;
+                        }
+                    });
+
 
                     {
                         let _danger_token = ui.begin_disabled(!(state.tmp_label.len() > 0) || state.tmp_total <= 0.);
                         if ui.button("Add") {
-                            state.receipts.push(Receipt::new(state.tmp_label.clone(), state.tmp_total.clone(), false));
+                            let receipt = Receipt::new(state.tmp_label.clone(), state.tmp_total.clone(), false);
+                            state.receipts.push(receipt.clone());
+
+                            if state.tmp_auto_add {
+                                state.share_map.iter_mut().for_each(|(_, l)| l.push(receipt.id));
+                            }
+
                             state.tmp_label = String::new();
                             state.tmp_total = 0.;
                         }
