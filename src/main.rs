@@ -52,7 +52,7 @@ impl Receipt {
             .exclusions
             .iter()
             .filter(|(id, _)| self.id == **id)
-            .fold(0., |s, a| s + a.1.total);
+            .fold(0., |s, a| s + a.1.iter().fold(0., |acc, x| acc + x.total));
         f32::max(self.total - a, 0.)
     }
 }
@@ -62,7 +62,7 @@ struct State {
     participants: Vec<Participant>,
     share_map: HashMap<Uuid, Vec<Uuid>>,
     receipts: Vec<Receipt>,
-    exclusions: HashMap<Uuid, Receipt>,
+    exclusions: HashMap<Uuid, Vec<Receipt>>,
 
     tmp_name: String,
     tmp_label: String,
@@ -75,6 +75,11 @@ struct State {
 }
 
 impl State {
+
+    fn remove_exclusion(&mut self, id: &Uuid) {
+        self.exclusions.remove(id);
+    }
+
     fn share_map(&self) -> HashMap<String, HashMap<String, f32>> {
         let mut map: HashMap<String, HashMap<String, f32>> = HashMap::new();
 
@@ -96,8 +101,7 @@ impl State {
                     .name
                     .clone();
                 if let Some(v) = map.get_mut(&name) {
-                    v
-                        .insert(receipt.label.clone(), share);
+                    v.insert(receipt.label.clone(), share);
                 } else {
                     map.insert(name, HashMap::from([(receipt.label.clone(), share)]));
                 }
@@ -204,15 +208,6 @@ impl State {
 
 fn main() {
     let mut state = State::default();
-
-    // Initialize
-    let r = Receipt::new("Sello".to_string(), 69.99, false);
-    let id = r.id;
-    state.receipts.push(r);
-    let e = Receipt::new("item".to_string(), 2.99, true);
-    state.exclusions.insert(id, e.clone());
-    state.receipts.push(e);
-
     let system = support::init(file!());
 
     system.main_loop(move |_, ui| {
@@ -346,12 +341,12 @@ fn main() {
                                 let id = receipt.id;
                                 let total = receipt.total(&state);
                                 let exclusion = receipt.exclusion;
+                                // FIX: I have no idea what is happening here
                                 let exclusions: Vec<(String, f32)> = state
                                     .exclusions
                                     .iter()
-                                    .filter(|(id, _)| receipt.id == **id)
-                                    .map(|(_, e)| (e.label.clone(), e.total))
-                                    .collect();
+                                    .find(|(id, _)| **id == receipt.id)
+                                    .map(|(_, e)| (e.iter().map(|r| (r.label.clone(), r.total(&state))).collect())).unwrap_or_default();
 
                                 ui.tree_node_config(format!(
                                     "{}: {:.2}##{row_num}",
@@ -390,7 +385,12 @@ fn main() {
                                                     state.r_tmp_total,
                                                     true,
                                                 );
-                                                state.exclusions.insert(id, receipt.clone());
+                                                match state.exclusions.get_mut(&id) {
+                                                    Some(v) => v.push(receipt.clone()),
+                                                    None => {
+                                                        state.exclusions.insert(id, vec![receipt.clone()]);
+                                                    },
+                                                }
                                                 state.receipts.push(receipt.clone());
 
                                                 if state.tmp_auto_add {
@@ -413,17 +413,7 @@ fn main() {
                                         let re = state.receipts.remove(row_num as usize);
 
                                         if re.exclusion {
-                                            let p = state
-                                                .exclusions
-                                                .iter()
-                                                .find(|(_, r)| r.id == re.id)
-                                                .map(|r| *r.0);
-
-                                            if p.is_none() {
-                                                return;
-                                            }
-
-                                            state.exclusions.remove(&p.unwrap());
+                                            state.remove_exclusion(&id)
                                         }
                                     }
                                 });
@@ -470,11 +460,8 @@ fn main() {
                                 state.tmp_label.is_empty() || state.tmp_total <= 0.,
                             );
                             if ui.button("Add") {
-                                let receipt = Receipt::new(
-                                    state.tmp_label.clone(),
-                                    state.tmp_total,
-                                    false,
-                                );
+                                let receipt =
+                                    Receipt::new(state.tmp_label.clone(), state.tmp_total, false);
                                 state.receipts.push(receipt.clone());
 
                                 if state.tmp_auto_add {
