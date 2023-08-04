@@ -95,9 +95,8 @@ impl State {
                     .unwrap()
                     .name
                     .clone();
-                if map.contains_key(&name) {
-                    map.get_mut(&name)
-                        .unwrap()
+                if let Some(v) = map.get_mut(&name) {
+                    v
                         .insert(receipt.label.clone(), share);
                 } else {
                     map.insert(name, HashMap::from([(receipt.label.clone(), share)]));
@@ -175,7 +174,7 @@ impl State {
 
             s += &format!(
                 "{}   {}   {}\n",
-                f(&name, c1),
+                f(name, c1),
                 f(&format!("{total:.2}€"), c2),
                 f("", c3)
             );
@@ -185,7 +184,7 @@ impl State {
                     "{} > {}   {}\n",
                     f("", c1),
                     f(&format!("{total:.2}€"), c2),
-                    f(&label, c3)
+                    f(label, c3)
                 );
             }
         }
@@ -318,7 +317,7 @@ fn main() {
                             .build();
 
                         {
-                            let _danger_token = ui.begin_disabled(!(state.tmp_name.len() > 0));
+                            let _danger_token = ui.begin_disabled(state.tmp_name.is_empty());
                             if ui.button("Add") {
                                 let p = Participant::new(state.tmp_name.clone());
                                 let id = p.id;
@@ -388,7 +387,7 @@ fn main() {
                                             if ui.button("Exclude") {
                                                 let receipt = Receipt::new(
                                                     state.r_tmp_label.clone(),
-                                                    state.r_tmp_total.clone(),
+                                                    state.r_tmp_total,
                                                     true,
                                                 );
                                                 state.exclusions.insert(id, receipt.clone());
@@ -418,7 +417,7 @@ fn main() {
                                                 .exclusions
                                                 .iter()
                                                 .find(|(_, r)| r.id == re.id)
-                                                .map(|r| r.0.clone());
+                                                .map(|r| *r.0);
 
                                             if p.is_none() {
                                                 return;
@@ -468,12 +467,12 @@ fn main() {
 
                         {
                             let _danger_token = ui.begin_disabled(
-                                !(state.tmp_label.len() > 0) || state.tmp_total <= 0.,
+                                state.tmp_label.is_empty() || state.tmp_total <= 0.,
                             );
                             if ui.button("Add") {
                                 let receipt = Receipt::new(
                                     state.tmp_label.clone(),
-                                    state.tmp_total.clone(),
+                                    state.tmp_total,
                                     false,
                                 );
                                 state.receipts.push(receipt.clone());
