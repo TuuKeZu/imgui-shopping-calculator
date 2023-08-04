@@ -341,7 +341,6 @@ fn main() {
                                 let id = receipt.id;
                                 let total = receipt.total(&state);
                                 let exclusion = receipt.exclusion;
-                                // FIX: I have no idea what is happening here
                                 let exclusions: Vec<(String, f32)> = state
                                     .exclusions
                                     .iter()
