@@ -34,7 +34,7 @@ pub fn init(title: &str) -> System {
         .with_inner_size(glutin::dpi::LogicalSize::new(800f64, 500f64));
     let display =
         Display::new(builder, context, &event_loop).expect("Failed to initialize display");
-        
+
     let mut imgui = Context::create();
     imgui.set_ini_filename(None);
 
